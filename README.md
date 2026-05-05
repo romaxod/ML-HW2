@@ -4,7 +4,7 @@
 ჩვენი მიზანი, რომ დავადგინოთ თაღლითური/ყალბი ტრანაქციები. ანუ უნდა დავაპრედიქტოთ 1/0 მოცემული მონაცემების მიხედვით. მეტრიკად გამოყენებული არის ROC-AUC დაპრედიქტებული ალბათობისა და ტარგეტს შორის.
 
 
-## Repository structure
+## repo სტრუქტურა
 
 ```
 ML-HW2/      
@@ -23,7 +23,7 @@ ML-HW2/
 
 
 
-## Data overview
+## Data 
 
 
 ![](pictures/fraudrate.png)
@@ -33,11 +33,9 @@ ML-HW2/
 identity table მხოლოდ უზრუნველყოფს სტრიქონების 25%ს, ამიტომაც left joinს ვაკეტებთ transactionIDსთან იმისთვის, რომ იგი nullებით მაინც იყოს სავსე და ტრანზაქციები არ დავკარგოთ.
 
 
----
-
 ## Feature Engineering
 
-### კატეგორიულების რიცხებში გადაყვანა
+კატეგორიულების რიცხებში გადაყვანა
 
 
 
@@ -49,11 +47,7 @@ identity table მხოლოდ უზრუნველყოფს სტრ
 
 რატომ არის Label Encoding OHEზე უკეთესი:
 
-* Tree models (XGBoost, RF, GBM, LightGBM) handle Label Encoding well — the
-  split threshold is what matters, not the semantics of the integer code.
-* In fraud detection the **frequency** of a category is often more
-  informative than the category itself (see Frequency Encoding below) —
-  OHE simply can't capture that.
+
 
   ხის მოდელები (XGBoost, Random Forest, LightGBM) უკეთ ჰენდლავენ label encodingს. რადგან ამ მოდელებში უფრო დამოკიედბულია სპლიტის თრეშჰოლდზე და არა თვითონ რიცხვით ველიუებზე.
   ასეთ ამოცანებში, სადაც ყალბი ტრანზაქციების ამოცნობას გვთხოვენ, კატეგორიის სიხშირე უფრო ინფორმატიულია ვიდრე თვით კატეგორია. ამას კი OHE ვერ ამოიცნობს.
@@ -61,7 +55,7 @@ identity table მხოლოდ უზრუნველყოფს სტრ
   ![](pictures/FE.png)
 
 
-### Nullების გადარჩევა
+Nullების გადარჩევა
 
  ამ ამოცანაში ველიუს გარეშე მყოფი future არ არის უბრალოდ დაკარგული ინფორმაცია. პირიქით, ამ ინფორმაციის არ ქონა სიგნალია იმისა, რომ შეიძლება თაღლითური ტრანზაქცია იყოს. მაგალითად card2 IS NULL კორელირებულია მაღალ სითაღლითის რეითთან. ამიტომ ჩვენი ქლინინგი მინიმუმს აკეთებს:
 
@@ -71,8 +65,7 @@ identity table მხოლოდ უზრუნველყოფს სტრ
    +- უსასრულობას ვცვლით ნალით.
 
 
-
-### გასუფთავება
+გასუფთავება
 
 ```text
 
@@ -81,7 +74,7 @@ identity table მხოლოდ უზრუნველყოფს სტრ
    სვეტები სახელად V300 და 300ზე მეტი, იყვნენ 95%ზე მეტი ნალ ველიუებით ისინიც დავდროპეთ, რათა ოვერფიტის რისკი დაგვეწია.
 ```
 
-### Feature Engineering
+Feature Engineering
 
 
 ```text
@@ -104,7 +97,6 @@ identity table მხოლოდ უზრუნველყოფს სტრ
   card1_amt_diff არის xgboostის Lightgbmის ტოპ 3 
   freq feature ამატებს დაახლოებით 0.005-0.010 AUCს წრფივი მოდელებისთვის და 0.002 AUC ხის მოდელებისთვის
 
----
 
 ## Feature Selection
 
@@ -141,21 +133,15 @@ identity table მხოლოდ უზრუნველყოფს სტრ
 
  ხის მოდელებისთვის:
 
-* High correlation is **not** a problem — the tree picks one of the correlated
-  features and ignores the rest, so a strict correlation filter is unnecessary.
-* It still helps to drop **rare / constant features** (split noise, wasted compute).
-* The most effective filter for tree models is **model-based importance** — a
-  single RandomForest fit gives us a usable ranking.
-
 
   მაღალი კოლერაცია არაა პრობლემა, ხე ირჩევს კოლერილებული featureბიდან 1ს და დანარჩენებს აიგნორებს, ამიტომ არ არის კოლერაციის ფილტრი აუცილებელი.
   მაინც კარგი არის, ისეთი სვეტების დადროპვა, სადაც თითქმის ერთი და იგივე ველიუა, რადგან ის უბრალოდ ნოისს მატებს.
   ყველაზე ეფექტური მეთოდი ხის მოდელებისთვის არის model based importance, random forestის ფიტი გვაძლევს საკმაოდ სასარგებო რანკინგს featureბის შეფასებისთვის
 We test three strategies:
 
-1. **Variance Threshold** 
-2. **RF embedded importance (top-K)** 
-3. **Permutation importance** 
+1. Variance Threshold
+2. RF embedded importance (top-K)
+3. Permutation importance
 
 ```text
   ვარიაციის თრეშჰოლდი ხშირად კარგად მუშაობს, რადგან ხე თვითონ ირჩევს გასპლითვის featureს.
@@ -170,12 +156,6 @@ We test three strategies:
 
 
 
-### Quick-CV comparison
-
-In every notebook the three candidate sets are evaluated with a quick 3-fold
-ROC-AUC CV (using a quick `LogisticRegression` for the linear profile, and a
-quick `RandomForest` for the tree profile). The winner is automatically
-assigned to `SELECTED_FEATURES`.
 
 
    ყველა ნოუთბუკში feature selectionის შემდეგ დატოვებული სვეტები ფასდება 3 fold rocauc ქროს ვალიდაციით. logisticregression გამოიყენება წრფივი მოდელებისთვის განსაზღვრული მეთოდებისთვი, ხოლო random forest ხეებისთვის.
@@ -187,34 +167,26 @@ assigned to `SELECTED_FEATURES`.
 ![](pictures/LFS.png)
 
 
----
-
 ## Training
 
-### გამოყენებული არქიტექტუერბი და მათი ჰიპერპარამეტრები:
+გამოყენებული არქიტექტუერბი და მათი ჰიპერპარამეტრები:
 
+Linear, `LinearRegression` (regression-on-binary baseline), OLS, Ridge α∈{1, 10, 100}, Lasso α∈{1e-4, 1e-3}
+Linear, `LogisticRegression`, C∈{0.01, 0.1, 1, 10}, balanced vs unbalanced, L1 vs L2
+Trees, `DecisionTree`, `max_depth`∈{3, 5, 10, 15, None}, `min_samples_leaf`, `min_samples_split`, `criterion`
+Trees, `RandomForest`, `n_estimators`∈{100, 200, 300, 500}, `max_depth`, `max_features`∈{`sqrt`, 0.3, 0.5}
+Boosting, `AdaBoost`, `n_estimators`, `learning_rate`, base estimator depth
+Boosting, `XGBoost`, `lr`, `n_est`, `depth`, `scale_pos_weight`, `subsample`, `colsample`, `reg_α/λ`
+Boosting, `LightGBM`, `lr`, `n_est`, `num_leaves`, `min_child_samples`, `subsample`, `colsample`, `reg_α/λ`, `class_weight`
 
-| Family | Model | Hyperparameters swept |
-|---|---|---|
-| Linear| `LinearRegression` (regression-on-binary baseline) | OLS, Ridge α∈{1, 10, 100}, Lasso α∈{1e-4, 1e-3} |
-| Linear| `LogisticRegression` | C∈{0.01, 0.1, 1, 10}, balanced vs unbalanced, L1 vs L2 |
-| Trees | `DecisionTree` | `max_depth`∈{3, 5, 10, 15, None}, `min_samples_leaf`, `min_samples_split`, `criterion` |
-| Trees | `RandomForest` | `n_estimators`∈{100, 200, 300, 500}, `max_depth`, `max_features`∈{`sqrt`, 0.3, 0.5} |
-| Boosting | `AdaBoost` | `n_estimators`, `learning_rate`, base estimator depth |
-| Boosting | `XGBoost` | `lr`, `n_est`, `depth`, `scale_pos_weight`, `subsample`, `colsample`, `reg_α/λ` |
-| Boosting | `LightGBM` | `lr`, `n_est`, `num_leaves`, `min_child_samples`, `subsample`, `colsample`, `reg_α/λ`, `class_weight` |
+UNDERFIT — train_auc < 0.75
+OVERFIT — overfit_gap > 0.05
+mild-overfit — overfit_gap ∈ (0.02, 0.05]
+HEALTHY — val_auc ≥ 0.85 and overfit_gap ≤ 0.02
 
+თთოექული მოდელის ანალიზი
 
-* `UNDERFIT` — `train_auc < 0.75` 
-* `OVERFIT` — `overfit_gap > 0.05` 
-* `mild-overfit` — `overfit_gap ∈ (0.02, 0.05]`
-* `HEALTHY` — `val_auc ≥ 0.85` and `overfit_gap ≤ 0.02`
-
-
-
-### თთოექული მოდელის ანალიზი
-
-#### LinearRegression 
+LinearRegression
 
 ```text
 
@@ -248,7 +220,7 @@ assigned to `SELECTED_FEATURES`.
 
 ![](imgforrm/LINREG.png)
 
-#### LogisticRegression
+LogisticRegression
 
 ```text
   კლასიფიკაციისთვის ბეისლაინ მოდელი არის.
@@ -280,8 +252,7 @@ class_weight = balanced გარეშე მოდელი ძალიან
 ![](imgforrm/LOGREG.png)
 
 
-
-#### DecisionTree
+DecisionTree
 
 ```text
 
@@ -308,8 +279,7 @@ DT_depth=10 + min_split=50   0.894799 0.865879 0.276797 0.414921     0.028920 mi
 ![](imgforrm/DT.png)
 
 
-
-#### RandomForest
+RandomForest
 
 ```text
 
@@ -335,7 +305,7 @@ RF_n=200,  d=15, min_leaf=20   0.974749 0.909784 0.444283 0.563159     0.064965 
 
 ![](imgforrm/RandF.png)
 
-#### AdaBoost
+AdaBoost
 
 ```text
   ადაბუსტი წონებს თავიდან ურჩევს ყველა ცუდად დაპრედიქტებულ ცვლადს და მის მიხედვით ახალ სუსტ ლერნერს ატრენინგებს. 
@@ -358,8 +328,7 @@ Ada_base d=3, n=200, lr=0.5   0.900403 0.881800 0.368757 0.438853     0.018603  
 ![](imgforrm/ADA.png)
 
 
-
-#### XGBoost
+XGBoost
 
 ```text
   xgboost ოპტიმიზირებული ბუსტინგის მეთოდია, და ასეთი ამოცანებისთვის საკმაოდ ხშირად გამოყენებადი
@@ -385,7 +354,7 @@ XGB_lr=0.05 n=800 d=10 sub=0.8 cs=0.7   0.999994 0.975894 0.811856 0.866378     
 
 ![](imgforrm/XG.png)
 
-#### LightGBM
+LightGBM
 
 ```text
   LightGBM ბუსტინგის ერთ-ერთი მოდელი, რომელიც ჰისტოგრამებზე არის დაფუძნებული. xgboostთან შედარებით ხეებს სხვა ლოგიკით აგებს, უფრო ფოკუზირდება ფოთლებზე. ამიტომ მას accuracy უფრო მეტი აქვს და უფრო სწრაფია.
@@ -415,12 +384,11 @@ LGBM_lr=0.05 n=800 leaves=255 sub=0.8 cs=0.7   1.000000 0.977187 0.841332 0.8852
 ![](imgforrm/LIGHT.png)
 
 
-
-### საბოლოოს შერჩევა
+საბოლოოს შერჩევა
 
 ყველა არქიტექტურის დალოგვის შემდეგ, ქროს ვალიდაციაზე ყველაზე მაღალი AUC სქორით იყვნენ
-XGBoost | 5-fold full-data | 0.9743 | 0.00112 
-LightGBM | 3-fold, 200k subsample | 0.9484 | 0.00087 
+XGBoost — 5-fold full-data — 0.9743 — 0.00112 
+LightGBM — 3-fold, 200k subsample — 0.9484 — 0.00087 
 
 მაგრამ მე მაინც ავირჩიე LightGBM და რატომ:
 
@@ -431,31 +399,30 @@ LightGBM | 3-fold, 200k subsample | 0.9484 | 0.00087
   ასეთი ქროს ვალიდაციის შედეგებით არჩევა არ მოგვცემდა ნამდვილად უკეთეს შედეგს. ვცადე lightgbmის ქროს ვალიდაციაც სრულ დატაზე გამეშვა, უბრალოდ 2 საათზე მეტი ლოდინის შემდეგ გადავწყვიტე აზრი არ ჰქონდა;დ. lightgbm ის მრავალ ფოთოლზე ფოკუზირებული და ფოთლებში რაც შეიძ₾ება მეტი დატის ლოგიკა უფრო კარგად ერგებოდა ამ პრობლემას. ამიტომ ორივე მოდელი გავუშვი საბმიშენზე და მართლაც LightGBMმა უკეთესი შედეგი დადო.
 
 
-#### ოვერფიტ/უნდერფიტ მოდელები
+ოვერფიტ/უნდერფიტ მოდელები
 
 ზოგი მოდელის ჰიპერპარამეტრები პეციალურად დავაყენე ისე, რომ ზოგი რანი ძალიან ოვერფიტ/უნდერფიტ ყოფილიყო, რათა მათი შეფასებაც შეგვძლებოდა.
 
-| `LogReg C=0.01` | UNDERFIT |
-| `Ridge α=100` | UNDERFIT | 
-| `Lasso α=1e-3` | lower AUC | 
-| `DT depth=None` | OVERFIT, train AUC ~1.0 | 
-| `RF depth=None, n=300` | mild-OVERFIT | 
-| `Bagging depth=None` | mild-OVERFIT | 
-| `GBM lr=0.2, n=100, d=3` | mild-OVERFIT | 
-| `AdaBoost n=400, lr=0.1` | GOOD | 
-| `XGB lr=0.05, n=800, d=10` | mild-OVERFIT | 
-| `LightGBM num_leaves=255, sub=0.8` | mild-OVERFIT | 
-| `NN wide (512,) alpha=1e-3` | OVERFIT | 
+LogReg C=0.01 — UNDERFIT
+Ridge α=100 — UNDERFIT
+Lasso α=1e-3 — lower AUC
+DT depth=None — OVERFIT, train AUC ~1.0
+RF depth=None, n=300 — mild-OVERFIT
+Bagging depth=None — mild-OVERFIT
+GBM lr=0.2, n=100, d=3 — mild-OVERFIT
+AdaBoost n=400, lr=0.1 — GOOD
+XGB lr=0.05, n=800, d=10 — mild-OVERFIT
+LightGBM num_leaves=255, sub=0.8 — mild-OVERFIT
+NN wide (512,) alpha=1e-3 — OVERFIT
 
   ამ მოდელებში ავარჩიეთ არალოგიკური ჰიპერპარამეტრების ველიუები - ზოგი ცოტა რეგულარიზაციის, ზოგი დიდი ხის სიღრმის, დიდი ლერნინგ რეიტის გამო წავიდა ოვერფიტში. ან პირიქით შერჩეული ველიუების გამო ანდერფიტში.
 
----
 
 ## MLflow Tracking
 
 https://dagshub.com/rkvit23/ML-HW2.mlflow
 
-### Experiment სტრუქტურა
+Experiment სტრუქტურა
 
 
 ```
@@ -476,26 +443,25 @@ LinearRegression_Training
 
 ![](imgforrm/MFRUN.png)
 
-### დალოგილი მეტრიკები
+დალოგილი მეტრიკები
 
+train_auc — ROC-AUC ტრენინგსეტზე — კარგად იფიტება თუ არი მოდელი დატაზე
+val_auc — ROC-AUC ვალიდაციის სეტზე — რომ შევაფასოთ მოდელი
+train_ap, val_ap — საშუალო precision — auc-rocის გარდა სხვა შემფასებელი მეტრიკაც
+val_f1, val_prec, val_recall — კლასიფიკაციის მეტრიკები თრეშჰოლდზე 0.5 — რექოლი მთავარია ამ პრობლემისთვის
+overfit_gap — train_auc − val_auc — <0.02 კარგი მოდელი, >0.05 ოვერფიტი
+cv_auc_mean — 5 fold ქროს ვალიდაციაზე საშუალო AUC — რამდენად სტაბილურია
+cv_auc_std — 5 fold CV std — ფოლდების ვარიაციას გვეუბნება
+cv_auc_fold1..5 — ფოლდამდე auc —
 
-| `train_auc` | ROC-AUC ტრენინგსეტზე | კარგად იფიტება თუ არი მოდელი დატაზე |
-| `val_auc` | ROC-AUC ვალიდაციის სეტზე | რომ შევაფასოთ მოდელი |
-| `train_ap`, `val_ap` | საშუალო precision | auc-rocის გარდა სხვა შემფასებელი მეტრიკაც |
-| `val_f1`, `val_prec`, `val_recall` | კლასიფიკაციის მეტრიკები თრეშჰოლდზე 0.5 | რექოლი მთავარია ამ პრობლემისთვის |
-| `overfit_gap` | `train_auc − val_auc` | <0.02 კარგი მოდელი, >0.05 ოვერფიტი |
-| `cv_auc_mean` | 5 fold ქროს ვალიდაციაზე საშუალო AUC | რამდენად სტაბილურია |
-| `cv_auc_std` | 5 fold CV std | ფოლდების ვარიაციას გვეუბნება |
-| `cv_auc_fold1..5` | ფოლდამდე auc |  |
+დალოგილი პარამეტრები
 
-### დალოგილი პარამეტრები
-
-| `model_type` | არქიტექტურის სახელი |
-| `feature_selection` | feature selectionის მეთოდი, რომელიც ავარჩიეთ |
-| `n_features` | საბოლოო Featureბი რაოდენობა |
-| `config` | runის ჰიპერპარამეტრები |
-| `best_config` | რომელი კონფიგი იყო საუკეთესო, final pipelineში ილოგება |
-| Hyperparameters | ჰიპერპარამეტრები |
+model_type — არქიტექტურის სახელი
+feature_selection — feature selectionის მეთოდი, რომელიც ავარჩიეთ
+n_features — საბოლოო Featureბი რაოდენობა
+config — runის ჰიპერპარამეტრები
+best_config — რომელი კონფიგი იყო საუკეთესო, final pipelineში ილოგება
+Hyperparameters — ჰიპერპარამეტრები
 
 ![](imgforrm/BM.png)
 
