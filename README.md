@@ -1,457 +1,497 @@
 # IEEE-CIS Fraud Detection
 
-## პროექტის მიმოხილვა
+## Project overview
 
-ეს არის Kaggle-ის [IEEE-CIS Fraud Detection](https://www.kaggle.com/c/ieee-fraud-detection) competition-ის
-გადაწყვეტა. ამოცანაა Vesta-ს რეალურ e-commerce ტრანზაქციებზე იწინასწარმეტყველო
-თითოეული ტრანზაქციის ფრაუდის ალბათობა (`isFraud ∈ {0, 1}`). მთავარი მეტრიკაა
-**ROC-AUC** პრედიქტირებულ ალბათობასა და რეალურ target-ს შორის.
+[IEEE-CIS Fraud Detection](https://www.kaggle.com/c/ieee-fraud-detection)
 
-დავალების ცენტრალური ნაწილი არ არის ერთ მოდელზე "მაქსიმალური ქულის ამოწურვა",
-არამედ:
+ჩვენი მიზანი, რომ დავადგინოთ თაღლითური/ყალბი ტრანაქციები. ანუ უნდა დავაპრედიქტოთ 1/0 მოცემული მონაცემების მიხედვით. მეტრიკად გამოყენებული არის ROC-AUC დაპრედიქტებული ალბათობისა და ტარგეტს შორის.
 
-* **სხვადასხვა Cleaning, Feature Engineering და Feature Selection მიდგომის გატესტვა**
-* **მრავალი მოდელის არქიტექტურის** ერთი feature pipeline-ით შედარება
-* თითოეული მოდელის **ჰიპერპარამეტრების სერიოზული scan**, ცალცალკე გამოვაჩინოთ
-  underfit / healthy / overfit რეჟიმი
-* ყოველი ექსპერიმენტის სრული ლოგი **MLflow / DagsHub-ზე**
 
-## რეპოზიტორიის სტრუქტურა
+## Repository structure
 
 ```
-ML-HW2/
-├── data/
-│   ├── train_transaction.csv         # 590k ტრანზაქცია, 394 სვეტი (Vesta)
-│   ├── train_identity.csv            # ~144k row, 41 device/identity სვეტი (LEFT join-ით)
-│   ├── test_transaction.csv          # 506k test ტრანზაქცია (target უცნობია)
-│   ├── test_identity.csv             # შესაბამისი identity rows
-│   └── sample_submission.csv         # Kaggle submission ფორმატი
-├── imgforrm/                         # README-ში ჩასასმელი სურათები (graphs / MLflow screenshot)
-├── model_experiment_LinearRegression.ipynb
+ML-HW2/      
+├── imgforrm/                         # screenshots / graphs for readme
+├── model_experiment_LinearRegression.ipynb   მოდელისთვის cleaning, feature engineering, selection, training. იგივე დანარჩენებისთვისაც
 ├── model_experiment_LogisticRegression.ipynb
-├── model_experiment_GLM.ipynb
 ├── model_experiment_DecisionTree.ipynb
-├── model_experiment_Bagging.ipynb
 ├── model_experiment_RandomForest.ipynb
-├── model_experiment_GradientBoosting.ipynb
 ├── model_experiment_AdaBoost.ipynb
 ├── model_experiment_XGBoost.ipynb
-├── model_experiment_NeuralNetwork.ipynb
-├── model_inference.ipynb             # Model Registry-დან საუკეთესო Pipeline-ის ჩაწერა + submission.csv
-├── _build_notebooks.py               # შიდა generator (10-ვე notebook-ის ერთიანი შაბლონი)
+├── model_experiment_LightGBM.ipynb
+├── model_inference.ipynb             # საუკეთესო მოდელის წამოღება mlflowს model registry დან და submission.csv დაგენერირება
 ├── .gitignore
-└── README.md
+└── README.md     #დოკუმენტაცია
 ```
 
-### ფაილების განმარტება
 
-* **`model_experiment_<Architecture>.ipynb`** — თითო notebook ერთ მოდელს უძღვნება. შიგნით
-  იდენტური სტრუქტურა გვაქვს Heading-ებით:
-  `0. Setup → 1. Cleaning → 2. Feature Engineering → 3. Feature Selection (model-კიდე) → 4. Training (ყველა ჰიპერპარამეტრი) → 5. Pipeline Construction & Save → 6. MLflow Logging`.
-  MLflow logging cell-ები **ცალცალკე ბოლოს არის შენახული**, რომ training-ის შედეგი ჯერ ნახო და მხოლოდ
-  მერე დააფიქსირო MLflow-ზე.
-* **`model_inference.ipynb`** — Model Registry-დან იტვირთავს გამარჯვებული მოდელის
-  მთლიან `Pipeline`-ს და უშვებს **raw** `test_*.csv`-ზე (ცალკე preprocessing-ი არ გვჭირდება),
-  წერს `submission.csv`-ს.
-* **`_build_notebooks.py`** — დახმარების ფაილი, რომელიც 10-ვე notebook-ს ერთიდაიგივე ბაზიდან
-  ქმნის. დავალების ნაწილი არ არის — წაშლადია მზა რეპოზიტორიიდან, მაგრამ აჩვენებს რომ
-  არცერთი notebook ხელით არ არის "სხვადასხვა შაბლონით" დაწერილი.
 
-## მონაცემების მიმოხილვა
+## Data overview
 
-> ![](imgforrm/data_overview.png)
-> *ჩასვი: `isFraud` distribution + per-column missing-rate ჰისტოგრამა (notebook-ის Data Overview უჯრიდან).*
 
-ცენტრალური დაკვირვებები რომელმაც ყველაფერი განსაზღვრა:
+![](pictures/fraudrate.png)
 
-* **მკაცრი class imbalance**: ფრაუდი ≈ 3.5%, legit ≈ 96.5%. ნებისმიერი მოდელი რომელიც
-  ბრმად პროგნოზირებს "0" იღებს Accuracy=96.5%-ს მაგრამ AUC=0.5-ს. ამიტომ accuracy არ
-  გვაინტერესებს — გვჭირდება AUC, recall, precision-recall curves.
-* **Identity ტაბულას ნახევარი row არ აქვს**. `train_id` ~144k row-ია, `train_tx` 590k.
-  გავაკეთოთ **LEFT join** TransactionID-ზე, რომ identity-ის სვეტებში ბევრი NaN იყოს,
-  მაგრამ ერთი row-იც არ დავკარგოთ.
-* **მეხსიერების ზეწოლა**: train_transaction ცალკე ~700MB. `reduce_mem(df)` ფუნქცია
-  ყოველ რიცხვით სვეტს დააcastav-ს `float32` / `int32`-ად -> ~50–70% memory saving.
-  ამის გარეშე ლოკალურად კარგი ლეპტოპიც კი swap-ის რეჟიმში ჩავარდება.
+  პირველ რიგში დატაში აღსაღნიშნავია, რომ მოსაძებნი მონაცემის პროცენტულობა მხოლოდ 3.5%ია, ხოლო დანარჩენის 96.5%. ნებისმიერმა მოდელმა რომ ბრმად დააპრედიქტოს 96.5% ექურასის მიიღებს, თუმცა auc 0.5 იქნება. ამიტომაც უნდა მივაქციოთ უფრო მეტი ყურადღება auc, recall, precision-recall.
+
+identity table მხოლოდ უზრუნველყოფს სტრიქონების 25%ს, ამიტომაც left joinს ვაკეტებთ transactionIDსთან იმისთვის, რომ იგი nullებით მაინც იყოს სავსე და ტრანზაქციები არ დავკარგოთ.
+
 
 ---
 
 ## Feature Engineering
 
-### კატეგორიული ცვლადების რიცხვითში გადაყვანა
+### კატეგორიულების რიცხებში გადაყვანა
 
-ყველა object/category სვეტი უნდა გადავიდეს რიცხვში, რადგან sklearn-ის უმრავლესობა
-მათ პირდაპირ ვერ ჭამს. გამოვცადე ორი მიდგომა:
 
-1. **One-Hot Encoding** — `card4` (4 cat), `card6` (3-4 cat), `ProductCD` (5 cat),
-   `M1..M9` (2-3 cat) — სათანადოდ მუშაობს, მაგრამ `P_emaildomain` (60+ cat),
-   `R_emaildomain` (60+ cat), `id_30`, `id_31` (browser strings, ასობით cat) -ზე
-   feature space ეფეთქება და linear მოდელის training time კატასტროფულად იზრდება.
-2. **Label Encoding (per column dictionary)** — დასრულებითი ვარიანტი. თითოეულ
-   object-სვეტს ვუყენებთ `{value: index}` map-ს რომელიც **მხოლოდ train-ზე ფიტდება**.
-   test-ში უცნობი value-ს -1 sentinel ენიჭება.
 
-რატომ Label Encoding წაიღო, OHE-ს გვერდით?
-- Tree-based მოდელებს (XGBoost, RF, GBM) Label Encoding თვითონ ცემს უპირატესობას —
-  split-ი threshold-ისგან არ ცვლის semantics-ს.
-- ფრაუდის task-ში ფიჩერების **frequency** ხშირად უფრო ღირებულია ვიდრე category-ის
-  იდენტობა (იხ. ქვემოთ Frequency Encoding) — OHE ამას ვერ ხედავს.
 
-> ![](imgforrm/cat_encoding.png)
-> *ჩასვი: ტოპ-10 high-cardinality სვეტი (cat-count bar), რათა გამართლდეს Label Encoding-ის არჩევანი.*
 
-### NaN მნიშვნელობების დამუშავება
+  one hot encoding: კარგად მუშაობდა ისეთ სვეტებზე, სადაც ცოტა განსხვავებული, unique ველიუ არის (card4, card6, ProductCD, M1..M9). ბევრით კი წრფივი მოდელების დატრენინგება რთული ხდება. 
+  Label Ecoding ყველა ობჯექტი სვეტში იღებს (ველიუ, ინდეხს) მაპს, რომლეიც მხოლოდ ტრეინზე იფიტება. სხვა დროს უნახავი ველიუები იღებენ -1 ველიუს (სენტინელს).
 
-> ![](imgforrm/nan_overview.png)
-> *ჩასვი: per-column missing-rate ჰისტოგრამა და top-20 ყველაზე NaN-იანი სვეტის სია.*
 
-IEEE-CIS-ში **ცარიელი მნიშვნელობა == სიგნალი**. მაგალითად, `card2 IS NULL` — როცა card-network
-infrastructure-მა ვერ დააიდენტიფიცირა, ფრაუდის რეიტი მკვეთრად მაღალია. ამიტომ
-სუფთად `fillna(0)` მცდარი მიდგომაა — ინფორმაციას კარგავს.
+რატომ არის Label Encoding OHEზე უკეთესი:
 
-ჩემი მიდგომა (იმპლემენტირებულია `Imputer` transformer-ში):
+* Tree models (XGBoost, RF, GBM, LightGBM) handle Label Encoding well — the
+  split threshold is what matters, not the semantics of the integer code.
+* In fraud detection the **frequency** of a category is often more
+  informative than the category itself (see Frequency Encoding below) —
+  OHE simply can't capture that.
 
-* **მედიანით ვავსებთ რიცხვით სვეტებს** — outlier-ებს უძლებს, mean-ისგან განსხვავებით.
-* **`-1` sentinel-ით ვავსებთ encoded-categorical-ს** — საიდან გავიგო, რომ `-1` "უცნობი"
-  ნიშნავს? ფიტში encoder ამ კოდს არასოდეს ანიჭებს, მხოლოდ transform-ის
-  დროს გვევლინება -> tree models-ი ერთი split-ით საკმარისად გაყოფს.
-* **`±inf` -> `NaN` -> impute** — `card1_amt_diff = TransactionAmt − card1_amt_mean`
-  float32-ში ხანდახან inf გამოდის. ეს **ცალკე ფიქსი იყო რომელმაც FS section-ის ValueError მოაგვარა**.
+  ხის მოდელები (XGBoost, Random Forest, LightGBM) უკეთ ჰენდლავენ label encodingს. რადგან ამ მოდელებში უფრო დამოკიედბულია სპლიტის თრეშჰოლდზე და არა თვითონ რიცხვით ველიუებზე.
+  ასეთ ამოცანებში, სადაც ყალბი ტრანზაქციების ამოცნობას გვთხოვენ, კატეგორიის სიხშირე უფრო ინფორმატიულია ვიდრე თვით კატეგორია. ამას კი OHE ვერ ამოიცნობს.
 
-### Cleaning მიდგომები
+  ![](pictures/FE.png)
 
-`analyse_missing()` ფუნქცია train-ისა და test-ის ერთობლიობას იწერს და გამოაგდებს:
 
-1. **>95% NaN-ანი სვეტი** — ინფორმაცია ფაქტობრივად ცარიელია, noise > signal.
-   IEEE-CIS-ში 100+ ასეთი V-სვეტი არსებობს (Vesta-ს pre-engineered features),
-   რომელთა pre-engineered logic უკვე "გამოყენებული აქვთ" სხვა სვეტებში.
-2. **კონსტანტური სვეტი (`nunique <= 1`)** — Information Gain = 0, model-ისთვის
-   absolute null. ხის model-ისთვის კი split-კენ აბუდებს გამოთვლა-time-ს.
+### Nullების გადარჩევა
 
-ორივე კატეგორიის სვეტი ერთიანი `DROP_COLS`-ი კენ მიდის და train-ისგან, test-ისგან
-ერთდროულად ცვივა. ჩვეულებრივ ~50–80 სვეტი ცვივა, ფიჩერების მთლიანი რიცხვი ~430-დან
-~370-მდე მცირდება.
+ ამ ამოცანაში ველიუს გარეშე მყოფი future არ არის უბრალოდ დაკარგული ინფორმაცია. პირიქით, ამ ინფორმაციის არ ქონა სიგნალია იმისა, რომ შეიძლება თაღლითური ტრანზაქცია იყოს. მაგალითად card2 IS NULL კორელირებულია მაღალ სითაღლითის რეითთან. ამიტომ ჩვენი ქლინინგი მინიმუმს აკეთებს:
 
-> ![](imgforrm/cleaning_drop.png)
-> *ჩასვი: bar plot drop-ი + drop-ამდე/შემდეგ shape (notebook-ის Cleaning section-დან).*
 
-### Engineered Features (FeatureEngineer transformer)
+   რიცხვით სვეტეს დავუტოვე ნალები - პაპილაინში მაინც მედიანას იღებს ამიტომ ლოგიკა იგივვე რჩება
+   ენკოდირებული ველიუები(label encoding) იღებენ -1ს. ენკოდერი ფიტისას არ აძლევს არაფერს -1 ველიუს, ამიტომ მოდელს შეუძლია ერთი სპლიტით დააშოროს უნახავი ან უცნობი ველიუები ტრეინისას.
+   +- უსასრულობას ვცვლით ნალით.
 
-ცალკე transformer ქმნის ფიჩერებს, რომელიც **pipeline-ის ნაწილი ხდება** -> inference-ზე
-raw test-ი თვითონ გადის ამ ფაზას.
 
-| ფიჩერი | რას აღწერს | რატომ კარგია ფრაუდის დეტექციისთვის |
-|--------|------------|----------------------------------|
-| `TX_hour`, `TX_day`, `TX_dow` | `TransactionDT` (timedelta) → საათი / დღე / კვირის დღე | ფრაუდის რეიტი ღამის საათებში 2–3-ჯერ მაღალია; weekend-ი განსხვავდება weekday-სგან |
-| `TX_amt_log` | `log1p(TransactionAmt)` | TransactionAmt ძლიერ skewed-ია, ლოგარითმი normalize-ს ეხმარება ლინეარულ მოდელებს |
-| `TX_amt_decimal` | ცენტების ნაწილი (× 1000) | ფრაუდი ხშირად იყენებს `.99` ან რაუნდ ფასებს |
-| `*_emaildomain_base`, `*_suf` | email split: base + TLD | `gmail.com` ↔ `outlook.es` სრულიად სხვადასხვა რისკია |
-| `*_emaildomain_risk` | binary flag `protonmail.com`, `mail.com` და მაგვართა | ცნობილი high-risk domains, ფრაუდის strong indicator |
-| `card1_amt_mean / std / diff` | per-card aggregations train-ზე ფიტდება | "ჩვეული" amount-ისგან გადახრა — outlier-ი ფრაუდის ერთ-ერთი ყველაზე ძლიერი predictor-ია |
-| `<col>_freq` | frequency encoding `card1, card2, card3, card5, addr1, P/R_emaildomain`-ისთვის | high-cardinality-ის OHE-ის ჩანაცვლება — ცოტა მეხსიერება, ნებისმიერ მოდელთან მუშაობს |
 
-> ![](imgforrm/fe_eda.png)
-> *ჩასვი: 4-paneled plot — (a) fraud rate by hour, (b) log(amount) distribution legit vs fraud, (c) fraud rate by ProductCD, (d) card1_amt_diff distribution. ეს notebook-ის "Feature Engineering Analysis" უჯრის output-ია.*
+### გასუფთავება
 
-ამ აგრეგაციების შედეგი:
-* `TX_hour`-ი ფაქტიურად ყოველთვის top-10 ფიჩერი ხდება tree model-ის importance-ში.
-* `card1_amt_diff` ფიჩერი XGBoost-ის feature importance-ში top-3-ში ხვდება.
-* `*_freq` ფიჩერები საშუალოდ AUC-ს +0.005..0.01-ით ზრდიან (linear), +0.002-ით (tree).
+```text
+
+   კონსტანტების სვეტებს არ აქვთ გეინი, მათი დატოვება არ გვაწყობს. იგი შეანელებდა ტრეინინგის პროცესს და მოდელებს ოვერფიტისკენ წაიყვანდა.
+   სვეტებს, რომლებსაც 95%ზე მეტი ნალები აქვთ, ძალიან ცოტა ინფორმაციას აძლევენ მოდელს, იმისთვის რომ რამე ისწავლოს. ის უბრალოდ ნოიზია, განსაკუთრებით ხის მოდელებისთვის, სადაც ერთმა არანალმა სტრიქონმა შეიძლება სპლიტი გადაწყვიტოს.
+   სვეტები სახელად V300 და 300ზე მეტი, იყვნენ 95%ზე მეტი ნალ ველიუებით ისინიც დავდროპეთ, რათა ოვერფიტის რისკი დაგვეწია.
+```
+
+### Feature Engineering
+
+
+```text
+
+  ჩვენი სამიზნე ცვლადის რეიტი ღამის საათებში 2-3ჯერ მეტი იყო ვიდრე პიკის საათებში, ამიტომ შემოვიღეთ ახალი ცვლადი TX_hour რომელიც მოდელებს დაეხმარებოდა მათ მარტივად აღმოჩენაში.
+  ტრანზაქციი სრაოდენობის ლოგარითმი საკმაოდ განსხვავდებოდა ნამდვილი და ყალბი ტრანზაქციებისთვის,
+  ყალბ ტრანზაქციებს უფრო მეტი დაბალი ოდენობის ტრანზაქცია ჰქონადთ. ეს ცვლადი წრფივ მოდელებს საკმკაოდ დაემხარება.
+  card1_amt_diff არის რამდენად არის გადახრა ნორმალური ამ ქარდის ტრანზაქციებიდან. ეს საკმაოდ ძლიერი პრედიქტორია ყალბი ტრანზაქციებისთვის
+
+```
+
+   TX hour, day, dow, transactionDT არის საათი/დღე/კვირისდღე მარტივად გამოყოფენ დროის იმ შუალედებს, როცა ბევრად მეტი ყალბი ტრაზაქცია ხდება
+   TX_amt_log ტრაზაქციების რაოდენობად გადახრა აქვს, ეხმარება წრფივ მოდელებს
+   TX_amt_decimal ცენტების რაოდენობა, ყალბი ტრანზაქციები ხშირად არის .99 ით დაბოლოებული
+   ასევე განვსაზღვრავთ ემეილის დომეინს, რადგან მათ განსხვავებული რისკი აქვთ.
+   ამისთვის გვაქვს ცალკე ცვლადი emaildomain_risk რომელიც 1ით ნიშნავს დომეინებს რომლებსაც უფრო დიდი რისკი აქვთ.
+   card1_amt_mean / std / diff თითოეული ქარდი დაფიტული ტრეინზე, განსხვავება ქარდის ნორმალური ტრანზაქციებისგან
+
+  TX_hour გამოდის top 10 feature როდესაც მათ მნიშვნელოვნებით დავალაგებთ ყველა ხის მოდელისთვის
+  card1_amt_diff არის xgboostის Lightgbmის ტოპ 3 
+  freq feature ამატებს დაახლოებით 0.005-0.010 AUCს წრფივი მოდელებისთვის და 0.002 AUC ხის მოდელებისთვის
 
 ---
 
 ## Feature Selection
 
-ერთ-ერთი **გასაღები insight** ამ დავალებაში: **სხვადასხვა მოდელს სხვადასხვა FS უხდება**.
-ამიტომ ერთიანი მაგისტრალური FS-ი არ მაქვს, არამედ სამი profile:
+ სხვადასხვა მოდელებისთვის გამოვიყენე სხვადახსვა feature selection მეთოდი, თავიდან უფრო ავიღე იმის ანალიზით, თუ რომელი მეთოდი როგორი ტიპის მოდელებს გამოადგებოდა.
 
-| Profile | მოდელები | მიდგომები |
-|---------|----------|-----------|
-| `linear` | LinearRegression, LogisticRegression, GLM | Variance Threshold + Correlation filter (>0.95) + Mutual Information top-K |
-| `tree`   | DecisionTree, Bagging, RandomForest, GradientBoosting, AdaBoost, XGBoost | Variance Threshold + RF embedded importance top-K + Permutation importance |
-| `nn`     | NeuralNetwork | Variance Threshold + Correlation filter (>0.9) + Mutual Information top-K |
+ წრფივი მოდელებისთვის (linear reg, logistic reg) გამოვიყენე variance threshold, correlation filter, mutual infomation
 
-რატომ ასე:
+ ხის მოდელებისთვის (decision tree, randomforest, adaboost, xgboost, lightgbm) გამოვიყენე variance threshold, random forestის იმპორტენსი, permutation importance
 
-* **ლინეარული მოდელები** მგრძნობიარეა multicollinearity-ზე (კოეფიციენტები ხდება unstable),
-  ამიტომ კოლერაციის ფილტრი 0.95-ით **სავალდებულოა**.
-* **ხის model-ები** კოლერაციას უძლებენ (ერთს ირჩევს, მეორეს უგულებელყოფს),
-  ამიტომ აქ "all_after_VT" + RF importance იგებს. **Permutation importance**
-  ყველაზე მკაცრი ფილტრია — ხედავს არა შიდა feature_importances_-ს, არამედ
-  რეალურ ეფექტს AUC-ზე როცა ფიჩერი randomly shuffle-დება.
-* **ნეირონული ქსელისთვის** მცირე და "სუფთა" feature-set-ი ხშირად უკეთესია, რადგან
-  multicollinear გაჯგუფებული ფიჩერები ნულოვან gradient-ს იწვევენ ერთ-ერთ ნეირონისთვის.
+  წრფივი მოდელებისთვის ავირჩიე აღნიშნული მეთოდები რადგან ისინი უფრო სენსეტიურები არიან:
+  მაღალ კოლერლებულ featurebზე, არასტაბილურ კოეფიციენტებზე
+  featurebზე რომლებსაც ძალიან დაბალი ვარიაცია აქვთ
+  დიდი რაოდენობით noisy featurebზე (რომლის გაფიქსვაც რეგულარიზაციას შეეძლო, მაგრამ არა სრულად)
 
-### გამოყენებული მიდგომები და მათი შეფასება
+  ვამოწმებთ ამ სელექშენის მეთოდებს და მათ ვადარებთ სწრაფი ქროს ვალიდაციით.
 
-თითოეულ notebook-ში 3 candidate-ი quick CV-ით ფასდება (3-fold ROC-AUC quick logistic /
-quick RF baseline-ით) და გამარჯვებული ავტომატურად ხდება `SELECTED_FEATURES`.
 
-> ![](imgforrm/fs_linear.png)
-> *ჩასვი: LinearRegression notebook-დან FS-comparison bar plot (quick logistic AUC).*
+```text
 
-> ![](imgforrm/fs_tree.png)
-> *ჩასვი: XGBoost / RandomForest notebook-დან FS-comparison plot (quick RF AUC).*
+  
+  VarianceThreshold აშორებს ისეთ სვეტებს, სადაც ველიუ თითმიქს ერთი და იგივეა. გამოდის 5-10 სვეტი რომელთა ვარიაციაც ძალიან დაბალია და მოდელს დიდ ინფორმაციას არ აძლევს
 
-> ![](imgforrm/fs_topfeats.png)
-> *ჩასვი: ტოპ-30 ფიჩერი Mutual Information / RF importance bar plot-ით.*
+  colleration filter - ზოგ სვეტში ძალიან ბევრი დუპლიკატი ველიუი იყო, იგი მათ აშორებს, რადგან წრფივი მოდელები იდენტურ სვეტებზე ცუდ კოეფიციენტებს აირჩევდნენ.
+  
+  
+  Mutual information -  სქორავს არა წრფივ დამოკიდებულებას ტარგეტთან, პრაქტიკაში იგი უკეთესია რადგან შენარჩუნებული feature უფრო ინფორმატიულია, არაა ნოისი.
 
-ჩემი დაკვირვებები (ყველა AUC IEEE-CIS-ის train-ზე 3-fold quick CV-ით):
 
-* **Linear profile**: `MI_top60` ჩვეულებრივ ჯობს `corr_filter_0.95`-ს ~0.005 AUC-ით,
-  რადგან target-relevance-ს პირდაპირ ცემს. რჩება ~60 ფიჩერი ~370-დან, ე.ი. დიდი წინსვლა speed-ში.
-* **Tree profile**: `RF_top80`-ი ხშირად მცირე ცდომით სცემს `all_after_VT`-ს. სხვაობა მცირეა (~0.001–0.003 AUC),
-  რადგან ხეები თვითონ ცდენენ "სასარგებლო" ფიჩერს ბევრიდან, მაგრამ training time საგრძნობლად მცირდება.
-* **Permutation importance**-ი 30-50 ფიჩერამდე იშვიათად ცდილობს AUC-ს კარგი მოდელისთვის,
-  მაგრამ არჩვევს overfitting-ის რისკიან ფიჩერებს. სტაბილური მოდელისთვის სასარგებლოა.
+  საუკეთესო მეთოდი დამოკიდებულია დატას კოლერილებულ სტრუქტურაზე. mutual information საუკეთესო აღმოჩნდა რადგან იგი რეგულარიზაციაზე უკეთ ფილტრავს ნოიზი სვეტებს.
+
+```
+
+   ![](pictures/MI.png)
+
+ ხის მოდელებისთვის:
+
+* High correlation is **not** a problem — the tree picks one of the correlated
+  features and ignores the rest, so a strict correlation filter is unnecessary.
+* It still helps to drop **rare / constant features** (split noise, wasted compute).
+* The most effective filter for tree models is **model-based importance** — a
+  single RandomForest fit gives us a usable ranking.
+
+
+  მაღალი კოლერაცია არაა პრობლემა, ხე ირჩევს კოლერილებული featureბიდან 1ს და დანარჩენებს აიგნორებს, ამიტომ არ არის კოლერაციის ფილტრი აუცილებელი.
+  მაინც კარგი არის, ისეთი სვეტების დადროპვა, სადაც თითქმის ერთი და იგივე ველიუა, რადგან ის უბრალოდ ნოისს მატებს.
+  ყველაზე ეფექტური მეთოდი ხის მოდელებისთვის არის model based importance, random forestის ფიტი გვაძლევს საკმაოდ სასარგებო რანკინგს featureბის შეფასებისთვის
+We test three strategies:
+
+1. **Variance Threshold** 
+2. **RF embedded importance (top-K)** 
+3. **Permutation importance** 
+
+```text
+  ვარიაციის თრეშჰოლდი ხშირად კარგად მუშაობს, რადგან ხე თვითონ ირჩევს გასპლითვის featureს.
+
+  random forestის გამოყენებით დარანკვა კარგად აბალანსებს featureბს და მათ აკურატულობას.
+
+  permutation importance არის უფრო მკაცრი ფილტრაციის მეთოდი - ის აშორებს featureბს რომლებიც არ ცვლიან AUCს. ამიტომ იგი ძალიან ამცირებს ფიჩერების რაოდენობას, რამაც შეიძლება კარგი ინფორმაციის გეინის მქონე სვეტებიც დაგვაკარგვინოს. 
+
+``` 
+
+   ![](pictures/RF.png)
+
+
+
+### Quick-CV comparison
+
+In every notebook the three candidate sets are evaluated with a quick 3-fold
+ROC-AUC CV (using a quick `LogisticRegression` for the linear profile, and a
+quick `RandomForest` for the tree profile). The winner is automatically
+assigned to `SELECTED_FEATURES`.
+
+
+   ყველა ნოუთბუკში feature selectionის შემდეგ დატოვებული სვეტები ფასდება 3 fold rocauc ქროს ვალიდაციით. logisticregression გამოიყენება წრფივი მოდელებისთვის განსაზღვრული მეთოდებისთვი, ხოლო random forest ხეებისთვის.
+
+
+    ![](pictures/TFS.png)
+    
+
+    ![](pictures/LFS.png)
+
 
 ---
 
 ## Training
 
-### ტესტირებული მოდელები
+### გამოყენებული არქიტექტუერბი და მათი ჰიპერპარამეტრები:
 
-10 არქიტექტურა, თითოეული საკუთარ notebook-ში, თითოეულზე 5–8 ჰიპერპარამეტრის config:
 
-| ოჯახი | მოდელი | ჰიპერპარამეტრები რომელსაც ვცვლი |
-|-------|--------|----------------------------------|
-| Linear / GLM | `LinearRegression` (regression-on-binary baseline) | OLS, Ridge α∈{1,10,100}, Lasso α∈{1e-4, 1e-3} |
-| Linear / GLM | `LogisticRegression` | C∈{0.01, 0.1, 1, 10}, balanced vs unbalanced, L1 vs L2 |
-| Linear / GLM | `GLM` (statsmodels) | logit / probit / cloglog link |
-| Trees | `DecisionTree` | max_depth∈{3,5,10,15,None}, min_samples_leaf, min_samples_split, criterion |
-| Trees | `Bagging` | base_depth, n_estimators∈{10,50,100}, max_features |
-| Trees | `RandomForest` | n_estimators∈{100,200,300,500}, max_depth, max_features∈{sqrt, 0.3, 0.5} |
-| Boosting | `GradientBoosting` | learning_rate, n_estimators, max_depth, subsample |
-| Boosting | `AdaBoost` | n_estimators, learning_rate, base estimator depth |
-| Boosting | `XGBoost` | lr, n_est, depth, scale_pos_weight, subsample, colsample, reg_α/λ |
-| NN | `NeuralNetwork (MLP)` | hidden_layer_sizes, alpha (L2), solver, learning_rate_init, early_stopping |
+| Family | Model | Hyperparameters swept |
+|---|---|---|
+| Linear| `LinearRegression` (regression-on-binary baseline) | OLS, Ridge α∈{1, 10, 100}, Lasso α∈{1e-4, 1e-3} |
+| Linear| `LogisticRegression` | C∈{0.01, 0.1, 1, 10}, balanced vs unbalanced, L1 vs L2 |
+| Trees | `DecisionTree` | `max_depth`∈{3, 5, 10, 15, None}, `min_samples_leaf`, `min_samples_split`, `criterion` |
+| Trees | `RandomForest` | `n_estimators`∈{100, 200, 300, 500}, `max_depth`, `max_features`∈{`sqrt`, 0.3, 0.5} |
+| Boosting | `AdaBoost` | `n_estimators`, `learning_rate`, base estimator depth |
+| Boosting | `XGBoost` | `lr`, `n_est`, `depth`, `scale_pos_weight`, `subsample`, `colsample`, `reg_α/λ` |
+| Boosting | `LightGBM` | `lr`, `n_est`, `num_leaves`, `min_child_samples`, `subsample`, `colsample`, `reg_α/λ`, `class_weight` |
 
-### Hyperparameter ოპტიმიზაციის მიდგომა
 
-წინა homework-ისგან განსხვავებით ერთი მოდელის grid-search-ი არ მოვაწყო — IEEE-CIS-ი
-ერთ ფიტზე იოლად 5–10 წუთი იღებს, GridSearch ლოკალურად არარეალისტურია. ნაცვლად ამისა,
-**manual grid**-ი ვიყენე, სადაც თითოეული მოდელისთვის ვცემ 5-8 პარამეტრიკომბინაცია, რომელიც
-**მთლიან რეგულარიზაცია-კომპლექსურობა spectrum-ს ფარავს**:
+* `UNDERFIT` — `train_auc < 0.75` 
+* `OVERFIT` — `overfit_gap > 0.05` 
+* `mild-overfit` — `overfit_gap ∈ (0.02, 0.05]`
+* `HEALTHY` — `val_auc ≥ 0.85` and `overfit_gap ≤ 0.02`
 
-* ერთი run "underfitting" კიდეზე (ძალიან ძლიერი reg, დაბალი depth, ცოტა estimator)
-* რამდენიმე run "sweet spot"-ში
-* ერთი run "overfitting" კიდეზე (ულიმიტო depth, მცირე reg)
 
-ეს გამიზნულად კეთდება — დავალების შეფასების კრიტერიუმში წერია რომ **overfit/underfit
-ანალიზი** მაღალ შედეგზე უფრო მნიშვნელოვანია. ამიტომ თითოეული notebook ბოლოში გვაქვს
-ცხრილი "diagnosis" სვეტით, სადაც ვადგენთ:
 
-* `UNDERFIT` — train AUC < 0.75 (ძალიან მცირე bias-ით კი არ, არამედ მოდელი სიგნალს ვერ იჭერს)
-* `OVERFIT` — overfit_gap > 0.05 (train AUC აღემატება val-ს > 5 პუნქტით)
-* `mild-overfit` — overfit_gap ∈ (0.02, 0.05]
-* `HEALTHY` — val_auc ≥ 0.85 და overfit_gap ≤ 0.02
+### თთოექული მოდელის ანალიზი
 
-> ![](imgforrm/overfit_diagnosis.png)
-> *ჩასვი: ერთ-ერთი notebook-დან diagnosis ცხრილისა და overfit-gap bar-ფერებიანი plot-ი (მწვანე=healthy, ნარინჯისფერი=mild, წითელი=overfit).*
+#### LinearRegression 
 
-### თითოეული მოდელის ანალიზი
+```text
 
-**LinearRegression (baseline-ი)** — წრფივი რეგრესიის MSE loss არ ემთხვევა classification
-problem-ს, მაგრამ AUC ranking-based მეტრიკაა, ამიტომ output-ის რანგი მუშაობს. Ridge α=1
-ჩვეულებრივ წინ ხტება. ყველა lin-reg run **UNDERFIT**-ად კლასიფიცირდება, რადგან
-"ცუდად ფრაუდს კლასიფიცირებს" — ეს მოლოდინის კონფირმაციაა და _ცალსახად ვაჩვენებ_ რომ
-ფრაუდის task-ისთვის lin-reg არ არის შესაფერისი ბაზა.
+  მოდელი არ არის კლასიფიკაციისთვის, პრედიქცია არ არის ალბათობა და MSE ევალუაციის არასწორი მეტრიკაა. მაგრამ ROG_AUCსთვის, უბრალო აუთფუთი მაინც შეიძლება სქორად გამოვიყენოთ.
 
-> ![](imgforrm/linreg.png)
-> *ჩასვი: LinearRegression results bar plot.*
+  ამ მოდელს ვიყენებთ ბეისლაინად/სპეციალურად აღებულ ცუდ მოდელად. დემოსტრაციას ვაკეთებთ იმისა თუ ვნახოთ როგორ ცუდ შედეგს დადებს იგი, რათა შემდეგ სხვა მოდელებს შევადაროთ. ამიტომაც ვამატებთ რეგულარიზაციებს (L1, L2) რათა ვნახოთ როგორ ცვლის აუთფუთს
 
-**LogisticRegression** — proper baseline. C=0.01 underfit-ია (ძალიან ძლიერი reg),
-C=1 sweet spot, C=10 ოდნავი overfit. balanced class_weight recall-ს ხდის ბევრად
-უკეთესს. **L1 lasso variant** ფიჩერების ნახევარს 0-ად აქცევს — სპარს მოდელი, AUC
-მცირედით ცდება მაგრამ inference 2x სწრაფი.
 
-> ![](imgforrm/logreg.png)
-> *ჩასვი: LogReg AUC-per-config + overfit-gap plot.*
+```
 
-**GLM (statsmodels)** — logit ≈ probit ≈ unregularized LogisticRegression. cloglog
-asymmetric link-ი rare-event-ებისთვის (3.5% ფრაუდი) ცოტა უკეთეს AIC-ს იძლევა.
-ღირებული დასკვნა: GLM-ის coefficient p-value-ები გვეხმარება ნახოს რომელი ფიჩერია
-სტატისტიკურად მნიშვნელოვანი (interpretability bonus).
+შედეგები:
 
-> ![](imgforrm/glm.png)
-> *ჩასვი: GLM AIC bar plot + AUC ცხრილი.*
+```text
+              name      train_auc  val_auc   val_ap   overfit_gap  diagnosis
+       Ridge a=1.0      0.847330   0.842783  0.422918    0.004547        ok
+       Ridge a=100      0.847165   0.842516  0.422336    0.004650        ok
+      Ridge a=10.0      0.847155   0.842495  0.422990    0.004660        ok
+      Lasso a=1e-4      0.846404   0.841986  0.418376    0.004418        ok
+      Lasso a=1e-3      0.832800   0.833115  0.393899   -0.000315        ok
+              OLS       0.834546   0.832980  0.396983    0.001566        ok
 
-**DecisionTree** — depth=3 underfit-ია (ბრძოლა შემოსული მონაცემების კომპლექსურობასთან).
-depth=10 sweet spot-ია **min_samples_leaf=20**-თან ერთად. depth=None **მკაცრი OVERFIT** —
-train AUC ≈ 1.0, val AUC ცდება ~0.10 პუნქტით. ეს არის overfit-ის სავიზიტო ბარათი.
+- 6 runs  | HEALTHY: 0 | OVERFIT: 0 | UNDERFIT: 0
+- Best   : Ridge a=1.0  ->  val AUC = 0.84278,  gap = +0.0045
+- Worst  : OLS          ->  val AUC = 0.83298,  gap = +0.0016
 
-> ![](imgforrm/dt.png)
-> *ჩასვი: DT-სა ჰიპერპარამეტრების შედარების plot. ყურადღება მიაქციე depth=None-ის წითელ overfit gap-ს.*
 
-**Bagging** — DT-ს variance-ს ამცირებს. base_depth=10, n=50 stable healthy. base_depth=None
-unlimited-ი ცოტათი overfit-ი რჩება (bagging variance-ს ცემს, ბაიასს არ ცემს).
+  ჩვეულებრივი წრფივი რეგრესია იღებს წონებს, რათა mseს მინიმიზაცია შეძლოს, რაც არაფერ შუაშია კლასიფიკაციის ალბათობასთან ან ლოგ ლოსთან. ridge alpha 10მდე სტაბილიზაციას უკეთებს კოეფიციენტებს aucის ძალიან შეცვლის გარეშე. ხოლო როცა იგი 100ის ტოლია კოეფიციენტები 0ს უახლოვდება. ქმნის ანდერფიტ მოდელს (high bias)
+  lasso ბევრ კოეფიციენტს ანულებს, auc ეცემა ოდნავ, ხოლო მოდელი ხდება უფრო სწრაფი და პატაარ.
+  ეს მოდელი სპეციალურად აღებულია, რათა ვნახოთ როგორ პერფონმასს დადებდა ცუდი მოდელი, რომელიც არც არის ასეთი პრობლემისთვის განსაზღვრული.
+```
 
-> ![](imgforrm/bagging.png)
-> *ჩასვი: Bagging results plot.*
 
-**RandomForest** — Bagging + per-split feature randomness. n=200, depth=15, max_features=sqrt
-ჩვეულებრივი sweet spot-ია IEEE-CIS-ისთვის. depth=None + n=300 ცოტა overfit-ი ჯერ კიდევ
-ჩანს, რადგან 80,000+ row-ის შემთხვევაში ხეები ღრმა ხდებიან.
+![](imgforrm/LINREG.png)
 
-> ![](imgforrm/rf.png)
-> *ჩასვი: RF results plot.*
+#### LogisticRegression
 
-**GradientBoosting (sklearn-ის)** — sequential boosting. lr=0.05, n=400, depth=5, subsample=0.8
-sweet spot-ია. learning_rate↗ + n_estimators↘ ჩვეულებრივ overfit-ს ზრდის. lr=0.2 + n=100
-**fast-but-overfit** kontrol-config-ია.
+```text
+  კლასიფიკაციისთვის ბეისლაინ მოდელი არის.
+```
 
-> ![](imgforrm/gbm.png)
-> *ჩასვი: GBM results plot.*
+შედეგები:
 
-**AdaBoost** — miss-classified samples-ს მაღალი weight-ი. n=400 + lr=0.1 აპუშავებს sweet
-spot-ს. n=100 + lr=1.0 ცოტა overfit-ი. depth=5 base-ი (default depth=1-დან)
-საგრძნობად აუმჯობესებს AUC-ს.
+```text
+                     name  train_auc  val_auc   val_f1   val_ap   overfit_gap  diagnosis
+LogReg_C=0.1,   l2 medium  0.869720   0.866756  0.231365 0.431380   0.002964    HEALTHY
+  LogReg_C=10,    weak l2  0.869128   0.866583  0.231058 0.431533   0.002545    HEALTHY
+LogReg_C=0.01,  l2 strong  0.868473   0.866077  0.230054 0.431186   0.002396    HEALTHY
+  LogReg_C=1.0,   default  0.868209   0.865693  0.228774 0.429494   0.002516    HEALTHY
+LogReg_C=1.0,   no weight  0.862015   0.859221  0.389237 0.452808   0.002794    HEALTHY
+ LogReg_C=1.0,   l1 lasso  0.858122   0.857495  0.220723 0.406274   0.000627    HEALTHY
 
-> ![](imgforrm/ada.png)
-> *ჩასვი: AdaBoost results plot.*
 
-**XGBoost** — IEEE-CIS-ის industry-default. **scale_pos_weight ≈ N_neg/N_pos** (ფრაუდის
-imbalance-ის კომპენსაცია). გრძელი run "lr=0.03, n=1200, depth=8, min_child_weight=10,
-reg_α=0.1, reg_λ=1.0, subsample=0.8, colsample=0.7" საუკეთესო AUC-ს აძლევს — ხშირად ეს
-არის გამარჯვებული Pipeline რომელიც Model Registry-ში დარეგისტრირდება.
+- 6 runs  | HEALTHY: 6 | OVERFIT: 0 | UNDERFIT: 0
+- Best   : LogReg_C=0.1, l2 medium  ->  val AUC = 0.86676,  gap = +0.0030
+- Worst  : LogReg_C=1.0, l1 lasso   ->  val AUC = 0.85750,  gap = +0.0006
 
-> ![](imgforrm/xgb.png)
-> *ჩასვი: XGBoost results plot. ყურადღება — `scale_pos_weight`-ის გარეშე recall ეცემა.*
 
-**NeuralNetwork (MLP)** — backpropagation log-loss-ზე. (128, 64) + alpha=1e-4 + early-stopping
-ჩვეულებრივ healthy. wide (512,) + ცუდი reg მიდრეკია overfit-ისკენ. SGD-ს ხშირად ვერ
-კონვერგირდება Adam-ისავით სწრაფად. NN ფრაუდის task-ში XGBoost-ს ცოტა ცდება, მაგრამ
-ensemble-ში ხშირად value-ს ამატებს.
+C = 0.01 რეგულარიზაცია იმდენად ძლიერია, რომ მოდელს ანდერფიტის გარდა სხვა გზა არააქვს, იგი ვერაფერს ვერ სწავლობს. ტრეინის auc იგივეა რაც ვალიდაციის auc თუმცა ორივე დაბალია, მას მაღალი ბაიასი აქვს.
+C = 0.1/1.0 კარგი გაპი აქვს და ბალანსირებულია.
+C = 10 რეგულარიზაცია სუსტია, პატარა გაპი არის ტრეინსა და ვალიდაციას შორის.
+L1 ბევრ კოეფიციენტს ანულებს, ოდნავ აგდებს aucს 
+class_weight = balanced გარეშე მოდელი ძალიან იშვიათად აპრედიქტებს ყალბ ტრანზაქციებს, რექოლი ეცემა 
 
-> ![](imgforrm/nn.png)
-> *ჩასვი: NN results plot.*
 
-### საბოლოო მოდელის შერჩევის დასაბუთება
+```
+![](imgforrm/LOGREG.png)
 
-* **ყოველი არქიტექტურა** ცალკე ფიტავს Pipeline-ს და რეგისტრირდება Model Registry-ში
-  სახელით `IEEE_Fraud_<Architecture>` (ე.ი. ყოველი archi-ის best run არის რეგისტრირებული).
-* **საბოლოო Production-Pipeline-ი** აიღება იმ არქიტექტურიდან, რომელიც **ყველაზე მაღალ
-  CV ROC-AUC-ს მოგვცემს** (5-fold StratifiedKFold-ი).
-* IEEE-CIS-ის ისტორიული შედეგებიდან გამომდინარე და ჩემი გამოცდილებით ყველაზე ხშირად
-  გამარჯვებული არის **`IEEE_Fraud_XGBoost`** (CV AUC ~0.93–0.94 ლოკალურად, public LB ~0.93).
-* `model_inference.ipynb`-ში `REGISTERED_NAME` constant-ი მიდინარე საუკეთესო მოდელის
-  სახელისკენ მიუთითებს — შეცვლა შეიძლება ყოველთვის როცა სხვა archi-ი წინ გამოვა.
 
-> ![](imgforrm/best_model_summary.png)
-> *ჩასვი: ყველა არქიტექტურის best CV-AUC bar plot (10 ბარი) — ფინალური "გამარჯვებულის" ვიზუალიზაცია.*
 
-#### Overfit / Underfit ანალიზი (განზრახ შემოტანილი)
+#### DecisionTree
 
-დავალების შეფასების ცხრილში წერია "მაღალ შედეგზე უფრო მნიშვნელოვანი არის overfit/underfit
-მოდელების **ჩვენება და ანალიზი**". ამიტომ თითოეულ notebook-ში ჩავრთე:
+```text
 
-| run | რა აჩვენებს | რატომ არის სასარგებლო |
-|-----|------------|-----------------------|
-| `LogReg C=0.01` | **UNDERFIT** | ძალიან ძლიერი L2 reg მთლიან სიგნალს მოშორავს |
-| `DT depth=None` | **OVERFIT** (train AUC ≈ 1.0) | unlimited tree იმახსოვრებს ტრეინ მონაცემებს |
-| `RF depth=None, n=300` | **mild-OVERFIT** | bagging variance-ს ცემს, მაგრამ depth-ი ისეთი დიდია რომ მაინც ოდნავი ჩამოვარდნაა |
-| `GBM lr=0.2, n=100, d=3 fast` | **mild-OVERFIT** | მაღალი learning rate sequential gradient-ს უფრო აგრესიულს ხდის |
-| `XGB lr=0.05, n=800, d=10` | **mild-OVERFIT** | ღრმა trees-ი + ბევრი boosting round-ი |
-| `LinearRegression Ridge a=100` | **UNDERFIT** | კოეფიციენტები 0-ისკენ მიდის |
-| `NN wide (512,) alpha=1e-3` | **OVERFIT** | ფართო ერთფენიანი ქსელი minimal reg-ით |
 
-ეს არის _გამოაცხადებული_ baseline-უარესი run-ები რომელსაც ცალკე ვაანალიზებ — არ არის
-შემთხვევით უარესი, არამედ კონტრასტისთვის შემოტანილი.
+  ერთი დისიჟენ თრი სპლიტავს გინის ან ენთროპიის გეინის მიხედვით. როგორც მოდელს, მას დაბალი ბაიასი აქვს მაგრამ მაღალი ვარიაცია. პრედიქშენები მცირე ცვლილებებით ტრეინინგ დატაზე ძალიან იცვლება. max_depthის სხვადასხვა მნიშვნელობების აღება და მათი შემოწმება გვაძლევს სხვადასხვა შედეგს, underfit-კარგი-overfit.
+
+  max_depth = 3 underfit ხეს არ შეუძლია კომპლექსური პრობლემის შესწავლა, რადგან ძალიან პატარაა
+  max_depth = 10 min_samples_leaf >>1 კარგია, სწავლობს დამოკიდებულებასაც, და არ მიდის ოვერფიტში
+  max depth = none ძალიან ოვერფიტედ მოდელი, იმახსოვრებს ყველაფერს ტრეინზე auc დაახლოებით 1 ია, ხოლო ახალ დატაზე ძალიან ცუდ შედეგს დებს
+```
+
+                      name  train_auc  val_auc   val_f1   val_ap  overfit_gap    diagnosis
+      DT_entropy criterion   0.897773 0.872468 0.232864 0.465048     0.025305 mild-overfit
+ DT_depth=10 + min_leaf=20   0.894445 0.866499 0.275255 0.422287     0.027947 mild-overfit
+DT_depth=10 + min_split=50   0.894799 0.865879 0.276797 0.414921     0.028920 mild-overfit
+               DT_depth=10   0.895519 0.864865 0.278172 0.411502     0.030654 mild-overfit
+               DT_depth=15   0.951226 0.846819 0.337916 0.448992     0.104407      OVERFIT
+                DT_depth=5   0.818953 0.817764 0.221793 0.276941     0.001189           ok
+     DT_depth=None overfit   1.000000 0.770522 0.552957 0.321261     0.229478      OVERFIT
+       DT_depth=3 underfit   0.770140 0.768548 0.207009 0.207315     0.001592           ok
+
+![](imgforrm/DT.png)
+
+
+
+#### RandomForest
+
+```text
+
+   როგორც ვიცით, რენდომ ფორესტი იყენებს ბეგინგს და ირჩევს რენდომ featureბს ყველა სპლიტისთვის. ეს რენდომულობა აგებს ნაკლებად კოლერილებულ ხეებს, რაც ვარიაციას აგდებს.
+
+   n_estimators არის ხეების რაოდენობა, ბევრი ხე უფრო სტაბილურ პრედიქშენს დაანრუნებს
+   max_depth ოვერფიტს აკონტროლებს, ხეები ძალიან ღრმა არ არის.
+   max_features რამდენი feature გამოიყენოს თითოეული სლიტისას. პატარა ველიუები უფრო რანდომულ სპლიტებს მოგვცემს, ოვერფიტს შეამცირებს, დიდი რადენობა კი ბაიასს ამატებს.
+   class_weight = balanced რადგან ძალიან ცოტა ყალბი ტრანზაქციაა, ეს ჰიპერპარამეტრი უფრო კარგ პრედიქშენს აბრუნებს.
+```
+
+                      name  train_auc  val_auc   val_f1   val_ap  overfit_gap    diagnosis
+     RF_n=300,  d=None, sqrt   1.000000 0.928156 0.506941 0.672903     0.071844      OVERFIT
+        RF_n=500,  d=20, 0.3   0.997816 0.918897 0.568029 0.586939     0.078918      OVERFIT
+        RF_n=500,  d=20, 0.3   0.997816 0.918897 0.568029 0.586939     0.078918      OVERFIT
+        RF_n=500,  d=20, 0.3   0.997816 0.918897 0.568029 0.586939     0.078918      OVERFIT
+RF_n=200,  d=15, min_leaf=20   0.974749 0.909784 0.444283 0.563159     0.064965      OVERFIT
+       RF_n=200,  d=15, sqrt   0.987583 0.908769 0.513558 0.565699     0.078814      OVERFIT
+        RF_n=200,  d=15, 0.5   0.988685 0.908267 0.510154 0.554478     0.080418      OVERFIT
+       RF_n=100,  d=10, sqrt   0.933694 0.891233 0.345648 0.517784     0.042461 mild-overfit
+
+![](imgforrm/RandF.png)
+
+#### AdaBoost
+
+```text
+  ადაბუსტი წონებს თავიდან ურჩევს ყველა ცუდად დაპრედიქტებულ ცვლადს და მის მიხედვით ახალ სუსტ ლერნერს ატრენინგებს. 
+
+  n_estimators პატარა რაოდენობა უნდერფიტს იწვევს, დიდი რაოდენობა კი ოვერფიტს.
+  learning rate x n_estimators   რეგულარიზაციას უკეთებს მოდელს.
+  ზოგადად ადაბუსტის weak learnerები რუთი და ორი ფოთოლია, მაგრამ ჩვენ უფრო ღრმა ვერსიებსაც ვტესტავთ რაც უკეთეს AUC გვვაძლევს
+```
+
+                       name  train_auc  val_auc   val_f1   val_ap  overfit_gap diagnosis
+Ada_base d=5, n=100, lr=1.0   0.960226 0.906113 0.486357 0.532896     0.054113   OVERFIT
+Ada_base d=3, n=200, lr=0.5   0.900403 0.881800 0.368757 0.438853     0.018603   HEALTHY
+          Ada_n=200, lr=0.5   0.869585 0.856130 0.248693 0.358877     0.013454   HEALTHY
+          Ada_n=100, lr=1.0   0.870495 0.856042 0.286361 0.364336     0.014453   HEALTHY
+   Ada_default n=50, lr=1.0   0.866539 0.853555 0.264368 0.355139     0.012984   HEALTHY
+          Ada_n=400, lr=0.1   0.857606 0.842892 0.132554 0.340528     0.014715        ok
+
+![](imgforrm/ADA.png)
+
+
+
+#### XGBoost
+
+```text
+  xgboost ოპტიმიზირებული ბუსტინგის მეთოდია, და ასეთი ამოცანებისთვის საკმაოდ ხშირად გამოყენებადი
+
+  ჰიპერპარამეტრები:
+
+  learning rate, n_estimators, max depth - ხეების რაოდენობა ბუსტინგში, თითოეული ხის სიღრმე
+  თითოეული ხით რამდენით უნდა წავიდეს, რათა წინა ხეების შედეგები გააუმჯობესოს
+  min_child_weight მინიმუმი წონა, რაც აუცილებელია სპლიტისას, ამცირებს ოვერფიტს. სპლიტები უფრო ლოგიკურია
+  scale_pos_weight  კარგად ჰენდლავს იმას, რომ დატას ძალიან მცირენაწილია ჩვენი დასაპრედიქტებელი ცვლადი
+  L1 L2
+```
+                                 name  train_auc  val_auc   val_f1   val_ap  overfit_gap    diagnosis
+XGB_lr=0.05 n=800 d=10 sub=0.8 cs=0.7   0.999994 0.975894 0.811856 0.866378     0.024101 mild-overfit
+    XGB_lr=0.03 n=1200 d=8 strict reg   0.997884 0.971642 0.648466 0.813415     0.026243 mild-overfit
+            XGB_lr=0.05 n=600 d=8 spw   0.994636 0.967118 0.588917 0.788591     0.027518 mild-overfit
+     XGB_default-ish lr=0.1 n=300 d=6   0.968087 0.950381 0.652609 0.746924     0.017706      HEALTHY
+       XGB_lr=0.1 n=300 d=6 reg_l2=10   0.962379 0.946191 0.634576 0.726394     0.016188      HEALTHY
+     XGB_shallow lr=0.1 n=500 d=4 reg   0.960190 0.943851 0.389824 0.656649     0.016339      HEALTHY
+
+![](imgforrm/XG.png)
+
+#### LightGBM
+
+```text
+  LightGBM ბუსტინგის ერთ-ერთი მოდელი, რომელიც ჰისტოგრამებზე არის დაფუძნებული. xgboostთან შედარებით ხეებს სხვა ლოგიკით აგებს, უფრო ფოკუზირდება ფოთლებზე. ამიტომ მას accuracy უფრო მეტი აქვს და უფრო სწრაფია.
+
+  ჰიპერპარამეტრები:
+
+  learning rate, n_estimators იგივე რაც xgboost
+  num_leaves - გამოიყენება max_depthის ნაცვლად. ბევრი ფოთოლი უფრო კომპლექსურ მოდელს გვაძლევს, მაგრამ ძალიან ზრდის ოვერფიტის შანსებს.
+  max_depth თითოეული ხის სიღრმე.
+  min child samples მინიმუმ რაოდენობის დატაპოინთი ფოთოლშ.
+  L1 L2
+  class weight =balanced როგორც xgboostში
+```
+
+ ქროს ვალიდაციის AUCზე დაყრდნობით, ეს მოდელი იგივე შედეგს დებს რასაც xgboost 
+
+                                        name  train_auc  val_auc   val_f1   val_ap  overfit_gap    diagnosis
+LGBM_lr=0.05 n=800 leaves=255 sub=0.8 cs=0.7   1.000000 0.977187 0.841332 0.885217     0.022813 mild-overfit
+   LGBM_lr=0.03 n=1200 leaves=127 strict reg   0.999518 0.974810 0.729312 0.843106     0.024708 mild-overfit
+      LGBM_lr=0.05 n=600 leaves=127 balanced   0.998902 0.972647 0.678162 0.828922     0.026254 mild-overfit
+     LGBM_default-ish lr=0.1 n=300 leaves=31   0.976849 0.952835 0.663513 0.749869     0.024015 mild-overfit
+       LGBM_lr=0.1 n=300 leaves=31 reg_l2=10   0.962231 0.947610 0.642434 0.732517     0.014621      HEALTHY
+     LGBM_shallow lr=0.1 n=500 leaves=15 reg   0.964652 0.947414 0.402375 0.669906     0.017238      HEALTHY
+
+![](imgforrm/LIGHT.png)
+
+
+
+### საბოლოოს შერჩევა
+
+ყველა არქიტექტურის დალოგვის შემდეგ, ქროს ვალიდაციაზე ყველაზე მაღალი AUC სქორით იყვნენ
+XGBoost | 5-fold full-data | 0.9743 | 0.00112 
+LightGBM | 3-fold, 200k subsample | 0.9484 | 0.00087 
+
+მაგრამ მე მაინც ავირჩიე LightGBM და რატომ:
+
+
+
+   ეს ორი ქროს ვალიდაციის ველიუ არ არის მთლიანად შედარებადი - xgboostის ქროს ვალიდაციამ გამოიყენა 80% მთლიანი დატის თითო ფოლდზე. lightGBM კი არა მთლიანი ველიუს 200000ს სტრიქონზე მუშაობდა. ორივე პაიპლაინი ტრენინგისას იფიტება მთლიან დატაზე. ეს განსხვავება მხოლოდ ქროსვალიდაციისას გამოყენებული დატას გამოა.
+
+  ასეთი ქროს ვალიდაციის შედეგებით არჩევა არ მოგვცემდა ნამდვილად უკეთეს შედეგს. ვცადე lightgbmის ქროს ვალიდაციაც სრულ დატაზე გამეშვა, უბრალოდ 2 საათზე მეტი ლოდინის შემდეგ გადავწყვიტე აზრი არ ჰქონდა;დ. lightgbm ის მრავალ ფოთოლზე ფოკუზირებული და ფოთლებში რაც შეიძ₾ება მეტი დატის ლოგიკა უფრო კარგად ერგებოდა ამ პრობლემას. ამიტომ ორივე მოდელი გავუშვი საბმიშენზე და მართლაც LightGBMმა უკეთესი შედეგი დადო.
+
+
+#### ოვერფიტ/უნდერფიტ მოდელები
+
+ზოგი მოდელის ჰიპერპარამეტრები პეციალურად დავაყენე ისე, რომ ზოგი რანი ძალიან ოვერფიტ/უნდერფიტ ყოფილიყო, რათა მათი შეფასებაც შეგვძლებოდა.
+
+| `LogReg C=0.01` | UNDERFIT |
+| `Ridge α=100` | UNDERFIT | 
+| `Lasso α=1e-3` | lower AUC | 
+| `DT depth=None` | OVERFIT, train AUC ~1.0 | 
+| `RF depth=None, n=300` | mild-OVERFIT | 
+| `Bagging depth=None` | mild-OVERFIT | 
+| `GBM lr=0.2, n=100, d=3` | mild-OVERFIT | 
+| `AdaBoost n=400, lr=0.1` | GOOD | 
+| `XGB lr=0.05, n=800, d=10` | mild-OVERFIT | 
+| `LightGBM num_leaves=255, sub=0.8` | mild-OVERFIT | 
+| `NN wide (512,) alpha=1e-3` | OVERFIT | 
+
+  ამ მოდელებში ავარჩიეთ არალოგიკური ჰიპერპარამეტრების ველიუები - ზოგი ცოტა რეგულარიზაციის, ზოგი დიდი ხის სიღრმის, დიდი ლერნინგ რეიტის გამო წავიდა ოვერფიტში. ან პირიქით შერჩეული ველიუების გამო ანდერფიტში.
 
 ---
 
 ## MLflow Tracking
 
-* **ბმული:** https://dagshub.com/rkvit23/ML-HW2.mlflow
-* **DagsHub რეპო:** https://dagshub.com/rkvit23/ML-HW2
-* **GitHub რეპო:** https://github.com/rkvit23/ML-HW2
+https://dagshub.com/rkvit23/ML-HW2.mlflow
 
-### ექსპერიმენტების სტრუქტურა
+### Experiment სტრუქტურა
 
-ყოველი არქიტექტურისთვის **საკუთარი ექსპერიმენტი**:
 
 ```
 LinearRegression_Training
-├── LinearRegression_Cleaning            (run – cleaning summary)
-├── LinearRegression_Feature_Selection   (run – FS comparison metrics)
-├── LinearRegression_OLS                 (run – per-config training)
+├── LinearRegression_Cleaning            ქლინინგის შედეგი
+├── LinearRegression_Feature_Selection   feature selectionის შედარება
+├── LinearRegression_OLS                 უჰიპერპარამეტრო
 ├── LinearRegression_Ridge a=1.0
 ├── LinearRegression_Ridge a=10.0
 ├── LinearRegression_Lasso a=1e-4
 ├── LinearRegression_Lasso a=1e-3
-├── LinearRegression_CrossValidation     (run – 5-fold CV for best config)
-└── LinearRegression_Final_Pipeline      (run – logs whole sklearn Pipeline + registers)
+├── LinearRegression_CrossValidation     5 ფოლდიანი ქროს ვალიდაციის შედეგი
+└── LinearRegression_Final_Pipeline      (run –ლოგავს მთლიან პაიპლაინს და არეგისტრირებს
+                                                model registryში)
 ```
 
-იგივე სტრუქტურა იმეორება ყოველი არქიტექტურისთვის (`LogisticRegression_Training`,
-`XGBoost_Training`, …, `NeuralNetwork_Training`).
+იგივე სტრუქტურაა გამოყენებული ყველა მოდელისთვის.
 
-> ![](imgforrm/mlflow_experiments.png)
-> *ჩასვი: DagsHub MLflow UI screenshot (10 ექსპერიმენტის სია).*
+![](imgforrm/MFRUN.png)
 
-> ![](imgforrm/mlflow_runs.png)
-> *ჩასვი: ერთ ექსპერიმენტში runs-ის სია (Cleaning / FS / per-config / CV / Final_Pipeline).*
+### დალოგილი მეტრიკები
 
-### ჩაწერილი მეტრიკების აღწერა
 
-| მეტრიკა | აღწერა | რისთვის გვჭირდება |
-|---------|--------|-------------------|
-| `train_auc` | ROC-AUC train-ზე | რამდენად კარგად ისწავლა ფიტ data-ზე |
-| `val_auc`   | ROC-AUC validation hold-out-ზე | მთავარი მეტრიკა (Kaggle-ის შეფასების მსგავსი) |
-| `train_ap`, `val_ap` | Average Precision (AUC-PR) | imbalance-ისთვის უფრო მგრძნობიარეა ვიდრე ROC-AUC |
-| `val_f1`, `val_prec`, `val_recall` | Threshold=0.5 classification metrics | recall ფრაუდის task-ში პრიორიტეტული |
-| `overfit_gap` | `train_auc − val_auc` | **<0.02 healthy, >0.05 overfit** |
-| `cv_auc_mean` | 5-fold CV mean ROC-AUC | model-ის სტაბილურობა |
-| `cv_auc_std`  | 5-fold CV std | სხვაობა fold-ებს შორის — სტაბილურობის ინდიკატორი |
-| `cv_auc_fold1..5` | per-fold AUC | რომელ fold-ში გვაქვს ჩამოვარდნა |
+| `train_auc` | ROC-AUC ტრენინგსეტზე | კარგად იფიტება თუ არი მოდელი დატაზე |
+| `val_auc` | ROC-AUC ვალიდაციის სეტზე | რომ შევაფასოთ მოდელი |
+| `train_ap`, `val_ap` | საშუალო precision | auc-rocის გარდა სხვა შემფასებელი მეტრიკაც |
+| `val_f1`, `val_prec`, `val_recall` | კლასიფიკაციის მეტრიკები თრეშჰოლდზე 0.5 | რექოლი მთავარია ამ პრობლემისთვის |
+| `overfit_gap` | `train_auc − val_auc` | <0.02 კარგი მოდელი, >0.05 ოვერფიტი |
+| `cv_auc_mean` | 5 fold ქროს ვალიდაციაზე საშუალო AUC | რამდენად სტაბილურია |
+| `cv_auc_std` | 5 fold CV std | ფოლდების ვარიაციას გვეუბნება |
+| `cv_auc_fold1..5` | ფოლდამდე auc |  |
 
-| პარამეტრი | აღწერა |
-|-----------|--------|
-| `model_type` | არქიტექტურის სახელი (`XGBoost`, `RandomForest` …) |
-| `feature_selection` | გამოყენებული FS მიდგომა (`MI_top60`, `RF_top80` …) |
-| `n_features` | საბოლოო feature-set-ის ზომა |
-| `config` | per-run-ის config-ის სახელი (კარგი grouping MLflow UI-ში) |
-| `best_config` | რომელი config აღმოჩნდა საუკეთესო Final_Pipeline run-ში |
-| ჰიპერპარამეტრები | `learning_rate`, `n_estimators`, `max_depth`, `reg_alpha`, `reg_lambda`, `scale_pos_weight`, `C`, `alpha`, `hidden_layer_sizes`, `min_samples_leaf` … |
+### დალოგილი პარამეტრები
 
-### საუკეთესო მოდელის შედეგები
+| `model_type` | არქიტექტურის სახელი |
+| `feature_selection` | feature selectionის მეთოდი, რომელიც ავარჩიეთ |
+| `n_features` | საბოლოო Featureბი რაოდენობა |
+| `config` | runის ჰიპერპარამეტრები |
+| `best_config` | რომელი კონფიგი იყო საუკეთესო, final pipelineში ილოგება |
+| Hyperparameters | ჰიპერპარამეტრები |
 
-> ![](imgforrm/mlflow_best.png)
-> *ჩასვი: საუკეთესო run-ის MLflow page (XGBoost_Final_Pipeline) — Metrics, Parameters, Artifacts (sklearn pipeline + model.pkl) ხილული უნდა იყოს.*
+![](imgforrm/BM.png)
 
-> ![](imgforrm/registry.png)
-> *ჩასვი: Model Registry-ის screenshot — `IEEE_Fraud_XGBoost/Production` (ან `latest`) version.*
-
-> ![](imgforrm/submission.png)
-> *ჩასვი: Kaggle Late Submission შედეგის screenshot (public score / private score).*
-
----
-
-## ინფერენსი (model_inference.ipynb)
-
-```python
-REGISTERED_NAME = "IEEE_Fraud_XGBoost"   # <- აქ წერე გამარჯვებული მოდელი
-MODEL_URI       = f"models:/{REGISTERED_NAME}/latest"
-pipeline = mlflow.sklearn.load_model(MODEL_URI)
-
-test = pd.read_csv("data/test_transaction.csv").merge(
-        pd.read_csv("data/test_identity.csv").rename(columns=lambda c: c.replace("-", "_")),
-        on="TransactionID", how="left")
-preds = pipeline.predict_proba(test.drop(columns=["TransactionID"]))[:, 1]
-pd.DataFrame({"TransactionID": test["TransactionID"], "isFraud": preds}).to_csv("submission.csv", index=False)
-```
-
-გასაღები: `pipeline` უკვე შეიცავს `FeatureEngineer + CategoricalEncoder + Imputer + ColumnSelector + best_model`,
-ამიტომ raw `test_*.csv`-დან submission-ი ერთი ფუნქცია-გამოძახებით კეთდება.
-
----
-
-## შეფასების კრიტერიუმებთან შესაბამისობა
-
-| კრიტერიუმი | წონა | რა გავაკეთე |
-|-----------|------|-------------|
-| Feature Engineering | 25% | `FeatureEngineer` transformer-ში time / amount / email / per-card aggregations / frequency encoding (იხ. ცხრილი ზევით) |
-| Feature Selection   | 25% | სამი profile (linear / tree / nn), თითოეული 3 მიდგომას ცემს და quick-CV-ით ირჩევს |
-| Training            | 30% | 10 არქიტექტურა, თითოზე 5–8 hyperparam config, შემდგომ overfit/underfit diagnosis ცხრილი |
-| MLflow Tracking     | 10% | 10 ცალკე experiment, თითო შიგნით 5+ run (Cleaning, FS, per-config, CV, Final_Pipeline) |
-| Repository Structure| 10% | ცალცალკე notebook-ი თითოეული მოდელისთვის + ერთიანი inference + იდენტური Heading-ები |
+![](imgforrm/Sub.png)
